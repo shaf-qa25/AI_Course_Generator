@@ -1,3 +1,4 @@
+//C:\Users\Shafqa\OneDrive\Desktop\NextJs Project\ai_story_generator\src\app\api\user\route.ts
 import { db } from "@/config/db";
 import { usersTable } from "@/config/schema";
 import { currentUser } from "@clerk/nextjs/server";
