@@ -1,92 +1,125 @@
 "use client"
-import React, { useEffect, useState } from 'react'
-import { db } from "@/config/db"
-import { Courses } from "@/config/schema"
-import { eq, desc } from "drizzle-orm"
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useUser } from '@clerk/nextjs'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Play, BookOpen, Trash2, Zap } from 'lucide-react'
+import { Play, BookOpen, Trash2, Loader2, Home } from 'lucide-react'
+import Header from '@/_components/Header'
+import Silk from "@/components/Silk.jsx"
 
 function Dashboard() {
     const { user } = useUser();
     const [courseList, setCourseList] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const hasFetched = useRef(false); // Double fetch rokne ke liye
     const router = useRouter();
 
-    useEffect(() => {
-        if (user) {
-            getUserCourses();
+    const getUserCourses = useCallback(async () => {
+        if (!user) return;
+        setLoading(true);
+        try {
+            const response = await fetch('/api/user-courses');
+            const data = await response.json();
+            setCourseList(data);
+        } catch (error) {
+            console.error("Error fetching:", error);
+        } finally {
+            setLoading(false);
         }
     }, [user]);
 
-    const getUserCourses = async () => {
-        setLoading(true);
-        // Direct DB call client side par allow nahi hoti, ideally ek API route banana chahiye
-        // But testing ke liye tu isse fetch('/api/user-courses') se replace kar sakta hai
-        const response = await fetch('/api/user-courses');
-        const data = await response.json();
-        setCourseList(data);
-        setLoading(false);
+    // Delete Logic (Ensure API Route handles DELETE)
+    const deleteCourse = async (courseId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm("Pakka uda du?")) return;
+
+        setDeletingId(courseId);
+        try {
+            const response = await fetch(`/api/user-courses?courseId=${courseId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                // UI se turant hatao
+                setCourseList((prev) => prev.filter(c => (c.courseId || c.id) !== courseId));
+            } else {
+                alert("Delete fail ho gaya bhai!");
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setDeletingId(null);
+        }
     }
 
+    useEffect(() => {
+        if (user && !hasFetched.current) {
+            getUserCourses();
+            hasFetched.current = true; // Ek baar fetch ho gaya toh bas
+        }
+    }, [user, getUserCourses]);
+
     return (
-        <div className='p-10 md:px-20 lg:px-40 mt-10'>
-            <div className='flex justify-between items-center mb-10'>
-                <div>
-                    <h2 className='text-3xl font-bold'>My AI Library</h2>
-                    <p className='text-muted-foreground'>All your generated stories and courses in one place.</p>
-                </div>
-                <button
-                    onClick={() => router.push('/')}
-                    className='bg-primary text-white px-5 py-2 rounded-full hover:scale-105 transition-all text-sm font-medium'
-                >
-                    + Create New
-                </button>
+        <div className='relative min-h-screen w-full bg-[#030303] overflow-hidden'>
+            <Header />
+            <div className='fixed inset-0 z-0 opacity-30 pointer-events-none'>
+                <Silk speed={0.8} scale={1.2} color="#4F46E5" />
             </div>
 
-            {loading ? (
-                <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-                    {[1, 2, 3].map((item) => (
-                        <div key={item} className='h-48 w-full bg-gray-200 animate-pulse rounded-2xl'></div>
-                    ))}
-                </div>
-            ) : (
-                <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'>
-                    {courseList.length > 0 ? courseList.map((course, index) => (
-                        <motion.div
-                            key={index}
-                            whileHover={{ y: -5 }}
-                            className='relative group cursor-pointer'
-                            onClick={() => router.push(`/generate?prompt=${course.prompt}&type=${course.type}`)}
-                        >
-                            <div className='p-6 rounded-3xl border bg-card hover:shadow-xl transition-all h-full flex flex-col justify-between'>
-                                <div>
-                                    <div className='flex justify-between items-start mb-4'>
-                                        <div className={`p-2 rounded-lg ${course.type === 'long' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
-                                            {course.type === 'long' ? <BookOpen size={20} /> : <Zap size={20} />}
-                                        </div>
-                                        <Trash2 className='text-muted-foreground hover:text-red-500 transition-colors' size={18} />
-                                    </div>
-                                    <h3 className='text-xl font-bold line-clamp-2 mb-2'>{course.prompt}</h3>
-                                    <p className='text-sm text-muted-foreground'>{course.content?.length} Slides</p>
-                                </div>
+            <div className='relative z-10 p-10 md:px-20 lg:px-40 mt-20'>
+                <header className='flex justify-between items-center mb-16'>
 
-                                <div className='mt-6 flex items-center text-primary font-semibold text-sm gap-2'>
-                                    <Play size={16} fill="currentColor" />
-                                    Watch Again
-                                </div>
-                            </div>
-                        </motion.div>
-                    )) : (
-                        <div className='col-span-full text-center py-20 border-2 border-dashed rounded-3xl'>
-                            <p className='text-muted-foreground'>Abhi tak kuch generate nahi kiya? Shuru ho jao! 🚀</p>
-                        </div>
-                    )}
-                </div>
-            )}
+                    <div className='flex gap-4'>
+                        <button
+                            onClick={() => router.push('/')}
+                            className='bg-primary text-white px-8 py-3 rounded-xl hover:scale-105 transition-all text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/20'
+                        >
+                            + Create New
+                        </button>
+                    </div>
+                </header>
+
+                {loading ? (
+                    <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'>
+                        {[1, 2, 3].map((i) => <div key={i} className='h-64 bg-white/5 animate-pulse rounded-[2.5rem] border border-white/5'></div>)}
+                    </div>
+                ) : (
+                    <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'>
+                        <AnimatePresence mode='popLayout'>
+                            {courseList.map((course) => (
+                                <motion.div
+                                    key={course.courseId || course.id}
+                                    layout
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.5 }}
+                                    className='relative group p-8 rounded-[2.5rem] border border-white/10 bg-white/[0.03] backdrop-blur-md hover:bg-white/[0.07] transition-all h-72 flex flex-col justify-between'
+                                    onClick={() => router.push(`/generate?prompt=${encodeURIComponent(course.prompt)}&type=${course.type}`)}
+                                >
+                                    <div className='flex justify-between items-start'>
+                                        <div className='px-3 py-1 rounded-full border-red-500 bg-amber-500 text-black text-[10px] font-black uppercase tracking-widest'>
+                                            {course.type}
+                                        </div>
+                                        <button
+                                            onClick={(e) => deleteCourse(course.courseId || course.id, e)}
+                                            className='text-zinc-600 hover:text-red-500 p-2'
+                                        >
+                                            {deletingId === (course.courseId || course.id) ? <Loader2 className='animate-spin' size={18} /> : <Trash2 size={18} />}
+                                        </button>
+                                    </div>
+                                    <h3 className='text-xl font-bold text-white line-clamp-2'>{course.prompt}</h3>
+                                    <div className='flex justify-between items-center pt-4 border-t border-white/5'>
+                                        <span className='flex items-center gap-2 text-[10px] font-black uppercase text-zinc-500'><Play size={12} /> Launch</span>
+                                        <span className='text-[10px] font-black text-zinc-600'>{course.content?.length || 0} MODULES</span>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
+                    </div>
+                )}
+            </div>
         </div>
     )
 }
-
 export default Dashboard
